@@ -15,13 +15,14 @@
 #define BULLET_SPEED 250
 #define CAPACITY 256
 #define PADDING 50
-#define ASETROIDS_COUNT 10
+#define ASETROIDS_COUNT 20
 #define DEBUG false
 
 typedef enum {
 	// MENU,
 	PLAYING,
-	GAME_OVER
+	GAME_OVER,
+	WON
 } GameState;
 
 typedef struct {
@@ -30,6 +31,7 @@ typedef struct {
 	float radius;
 	int lines;
 	int speed;
+	bool alive;
 } Poly;
 
 
@@ -204,7 +206,9 @@ int main() {
 		asteroid.lines = 8;
 		asteroid.angle = GetRandomValue(-360, 360);
 		asteroid.speed = GetRandomValue(50, 100);
+		asteroid.alive = true;
 		asteroids[i] = asteroid;
+
 	}
 
 	const float FIRERATE_TIMER = 1/8.f;
@@ -212,6 +216,8 @@ int main() {
 
 	Bullets bullets;
 	init_bullets(&bullets);
+
+	int asteroids_live_count = ASETROIDS_COUNT;
 
 	GameState current_state = PLAYING;
 
@@ -230,6 +236,7 @@ int main() {
 		// Update
 		switch(current_state) {
 			case PLAYING: {
+				if (asteroids_live_count <= 0) current_state = WON;
 				// player
 				player_movement(&player, dt);
 
@@ -252,6 +259,7 @@ int main() {
 					if (!bullet.queue_free) {
 						for(int j = 0; j < ASETROIDS_COUNT; j++) {
 							Poly asteroid = asteroids[j];
+							if (!asteroid.alive) continue;
 							float size = asteroid.radius/1.25f;
 							Rectangle asteroid_rect = (Rectangle){asteroid.pos.x-size, asteroid.pos.y-size, size*2, size*2};
 							if (CheckCollisionRecs(bullet_rect, asteroid_rect)) {
@@ -260,6 +268,10 @@ int main() {
 								asteroids[j].lines -= 1;
 								asteroids[j].speed += GetRandomValue(10, 20);
 								asteroids[j].angle += GetRandomValue(-360, 360);
+								if (asteroids[j].lines <= 4) {
+									asteroids_live_count--;
+									asteroid.alive = false;
+								}
 							} 
 						}	
 					}
@@ -268,14 +280,17 @@ int main() {
 				// check player asetroid collision
 				for(int j = 0; j < ASETROIDS_COUNT; j++) {
 					Poly asteroid = asteroids[j];
-					float a_size = asteroid.radius/1.25f;
-					Rectangle asteroid_rect = (Rectangle){asteroid.pos.x-a_size, asteroid.pos.y-a_size, a_size*2, a_size*2};
+					if (asteroid.lines > 4) {
+						float a_size = asteroid.radius/1.25f;
+						Rectangle asteroid_rect = (Rectangle){asteroid.pos.x-a_size, asteroid.pos.y-a_size, a_size*2, a_size*2};
 
-					float p_size = player.radius/1.5f;
-					Rectangle player_rect = (Rectangle){player.pos.x-p_size, player.pos.y-p_size, p_size*2, p_size*2};
-					if (CheckCollisionRecs(player_rect, asteroid_rect)) {
-						current_state = GAME_OVER;
-					} 
+						float p_size = player.radius/1.5f;
+						Rectangle player_rect = (Rectangle){player.pos.x-p_size, player.pos.y-p_size, p_size*2, p_size*2};
+						if (CheckCollisionRecs(player_rect, asteroid_rect)) {
+							current_state = GAME_OVER;
+						} 	
+					}
+					
 				}
 
 				// remove bullets
@@ -293,6 +308,24 @@ int main() {
 						asteroid.lines = 8;
 						asteroid.angle = GetRandomValue(-360, 360);
 						asteroid.speed = GetRandomValue(50, 100);
+						asteroid.alive = true;
+						asteroids[i] = asteroid;
+					}
+				}
+				break;
+			}
+			case WON: {
+				if (IsKeyPressed(KEY_ENTER)) {
+					current_state = PLAYING;
+					for(int i = 0; i < ASETROIDS_COUNT; i++) {
+						Poly asteroid = {0};
+						asteroid.pos.x = GetRandomValue(0, GAME_WIDTH);
+						asteroid.pos.y = 0;
+						asteroid.radius = 40.f;
+						asteroid.lines = 8;
+						asteroid.angle = GetRandomValue(-360, 360);
+						asteroid.speed = GetRandomValue(50, 100);
+						asteroid.alive = true;
 						asteroids[i] = asteroid;
 					}
 				}
@@ -308,8 +341,9 @@ int main() {
 			case PLAYING: {
 				// draw player
 				if (DEBUG) {
-					float size = player.radius/1.5f;
-					DrawRectangleV((Vector2){player.pos.x-size, player.pos.y-size}, (Vector2){size*2, size*2}, GREEN);	
+					float p_size = player.radius/1.5f;
+					Rectangle player_rect = (Rectangle){player.pos.x-p_size, player.pos.y-p_size, p_size*2, p_size*2};
+					DrawRectangleRec(player_rect, GREEN);
 				}
 				DrawPolyLines(player.pos, player.lines, player.radius, player.angle, WHITE);
 
@@ -328,7 +362,7 @@ int main() {
 				// draw asteroids
 				for(int i = 0; i < ASETROIDS_COUNT; i++) {
 					Poly asteroid = asteroids[i];
-					if (asteroids[i].lines > 4) {
+					if (asteroids[i].alive) {
 						if (DEBUG) {
 							float size = asteroid.radius/1.25f;
 							DrawRectangleV((Vector2){asteroid.pos.x-size, asteroid.pos.y-size}, (Vector2){size*2, size*2}, GREEN);	
@@ -338,12 +372,19 @@ int main() {
 				}
 
 				if (DEBUG) {
-					DrawText(TextFormat("count = %d", bullets.count), 10, 10, 16, RED);	
+					DrawFPS(10, 10);
+					DrawText(TextFormat("bullets = %d", bullets.count), 10, 30, 16, RED);
+					DrawText(TextFormat("asteroids = %d", asteroids_live_count), 10, 50, 16, RED);
+					
 				}
 				break;
 			}
 			case GAME_OVER: {
 				DrawText("GAME OVER: Press [enter] to play again", GAME_WIDTH/2 - 150, GAME_HEIGHT/2.5, 16.f, WHITE);
+				break;
+			}
+			case WON: {
+				DrawText("YOU WON!: Press [enter] to play again", GAME_WIDTH/2 - 150, GAME_HEIGHT/2.5, 16.f, WHITE);
 				break;
 			}
 		}
